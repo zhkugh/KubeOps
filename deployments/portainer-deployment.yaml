@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: portainer-sa  # 定义一个名为 portainer-sa 的服务账号
+  namespace: default   # 在默认命名空间中创建
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: portainer-clusterrole  # 定义一个名为 portainer-clusterrole 的集群角色
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["*"]  # 允许该角色对所有资源执行所有操作
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: portainer-clusterrolebinding  # 定义一个名为 portainer-clusterrolebinding 的集群角色绑定
+subjects:
+- kind: ServiceAccount
+  name: portainer-sa
+  namespace: default   # 将服务账号 portainer-sa 绑定到默认命名空间中
+roleRef:
+  kind: ClusterRole
+  name: portainer-clusterrole
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portainer  # 定义一个名为 portainer 的部署
+  labels:
+    app: portainer  # 设置标签为 app=portainer，用于选择器
+spec:
+  replicas: 1  # 指定运行 1 个副本的 Portainer Pod
+  selector:
+    matchLabels:
+      app: portainer  # 匹配标签为 app=portainer 的 Pod
+  template:
+    metadata:
+      labels:
+        app: portainer  # 设置 Pod 标签为 app=portainer
+    spec:
+      serviceAccountName: portainer-sa  # 指定使用 portainer-sa 服务账号
+      containers:
+      - name: portainer
+        image: portainer/portainer-ce:latest  # 使用 Portainer CE 的最新镜像
+        ports:
+        - containerPort: 9000  # 容器内部监听的端口
+        volumeMounts:
+        - name: data
+          mountPath: /data  # 挂载名为 data 的持久化卷到 /data 路径
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: portainer-data  # 使用名为 portainer-data 的持久化卷声明
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: portainer  # 定义一个名为 portainer 的服务
+  labels:
+    app: portainer  # 设置标签为 app=portainer，用于选择器
+spec:
+  type: NodePort  # 使用 NodePort 类型的服务
+  ports:
+  - port: 9000  # 服务暴露的端口
+    targetPort: 9000  # Pod 内部的目标端口
+    nodePort: 30000  # 节点上的端口，通过此端口可以从外部访问 Portainer
+  selector:
+    app: portainer  # 匹配标签为 app=portainer 的 Pod
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: portainer-data  # 定义一个名为 portainer-data 的持久化卷声明
+spec:
+  accessModes:
+    - ReadWriteOnce  # 读写一致访问模式
+  resources:
+    requests:
+      storage: 10Gi  # 请求 10GB 存储资源
