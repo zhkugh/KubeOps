@@ -22,7 +22,7 @@ echo "Orb 当前状态是 Running，继续创建虚拟机..."
 # 创建 master 节点
 for i in $(seq 1 $NUM_MASTERS); do
   echo "正在创建 master-$i..."
-  orb create -a arm64 ubuntu:noble master-$i
+  orb create ubuntu:noble master-$i
   if [ $? -ne 0 ]; then
     echo "创建 master-$i 失败"
     exit 1
@@ -32,7 +32,7 @@ done
 # 创建 worker 节点
 for i in $(seq 1 $NUM_WORKERS); do
   echo "正在创建 worker-$i..."
-  orb create -a arm64 ubuntu:noble worker-$i
+  orb create ubuntu:noble worker-$i
   if [ $? -ne 0 ]; then
     echo "创建 worker-$i 失败"
     exit 1
