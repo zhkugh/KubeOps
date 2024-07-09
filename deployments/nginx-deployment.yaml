@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nginx-deployment # 部署的名称
+  name: nginx # 部署的名称
 spec:
   selector:
     matchLabels:

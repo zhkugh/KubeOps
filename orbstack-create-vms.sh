@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# orb 创建虚拟机的镜像需要从外网拉去，注意网络环境
+# orb 创建虚拟机的镜像需要从外网拉取，注意网络环境
 
 # 默认的 master 和 worker 节点数量
 DEFAULT_NUM_MASTERS=1
@@ -19,10 +19,21 @@ fi
 
 echo "Orb 当前状态是 Running，继续创建虚拟机..."
 
+# 检查系统架构
+ARCH=$(uname -m)
+if [ "$ARCH" == "arm64" ]; then
+  ARCHITECTURE="arm64"
+elif [ "$ARCH" == "x86_64" ]; then
+  ARCHITECTURE="amd64"
+else
+  echo "不支持的系统架构: $ARCH"
+  exit 1
+fi
+
 # 创建 master 节点
 for i in $(seq 1 $NUM_MASTERS); do
   echo "正在创建 master-$i..."
-  orb create ubuntu:noble master-$i
+  orb create -a $ARCHITECTURE ubuntu:noble master-$i
   if [ $? -ne 0 ]; then
     echo "创建 master-$i 失败"
     exit 1
@@ -32,7 +43,7 @@ done
 # 创建 worker 节点
 for i in $(seq 1 $NUM_WORKERS); do
   echo "正在创建 worker-$i..."
-  orb create ubuntu:noble worker-$i
+  orb create -a $ARCHITECTURE ubuntu:noble worker-$i
   if [ $? -ne 0 ]; then
     echo "创建 worker-$i 失败"
     exit 1
@@ -94,13 +105,23 @@ EOF
   [plugins.cri.registry.mirrors."docker.io"]
     endpoint = ["https://hub.uuuadc.top","https://docker.anyhub.us.kg","https://dockerhub.jobcher.com"]
 
+# 等待 k3s 服务启动
+echo "等待 k3s 服务启动..."
+sleep 30    
+
 # 获取 Master 节点的 token
 echo "正在从 master-1 获取 k3s token..."
 TOKEN=$(ssh root@master-1@orb "cat /var/lib/rancher/k3s/server/node-token")
 if [ -z "$TOKEN" ]; then
   echo "从 master-1 获取 token 失败"
+  echo "检查 k3s 服务状态..."
+  ssh root@master-1@orb "systemctl status k3s"
   exit 1
 fi
+
+# 从 master-1 获取 kubeconfig 文件
+scp root@master-1@orb:/etc/rancher/k3s/k3s.yaml /tmp/k3s.yaml
+sed -i "s/127.0.0.1/$MASTER_IP/" /tmp/k3s.yaml
 
 # 在 Worker 节点上安装 Docker 和 k3s 并加入集群
 for i in $(seq 1 $NUM_WORKERS); do
@@ -151,9 +172,17 @@ done
 
 echo "所有节点已成功加入 k3s 集群！"
 
-# 部署 nginx 和 portainer 应用
+# 检查集群节点状态
+echo "检查集群节点状态..."
+KUBECONFIG=/tmp/k3s.yaml kubectl get nodes
+
+# 检查集群 Pod 状态
+echo "检查集群 Pod 状态..."
+KUBECONFIG=/tmp/k3s.yaml kubectl get pods -A
+
+# 使用 k3s 集群的 kubeconfig 文件部署应用
 echo "正在部署 nginx 和 portainer 应用..."
-kubectl create -f deployments/nginx-deployment.yaml
-kubectl create -f deployments/portainer-deployment.yaml
+KUBECONFIG=/tmp/k3s.yaml kubectl apply -f deployments/nginx-deployment.yaml
+KUBECONFIG=/tmp/k3s.yaml kubectl apply -f deployments/portainer-deployment.yaml
 
 echo "所有应用部署完成！"
